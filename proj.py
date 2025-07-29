@@ -270,62 +270,57 @@ with tab2:
     with st.expander("Map Settings", expanded=True):
         col1, col2, col3 = st.columns(3)
         with col1:
-            zoom = st.slider(
-                "Zoom Level",
-                min_value=9.0,
-                max_value=15.0,
-                value=float(st.session_state.view_state['zoom']),
-                step=0.5
-            )
+            zoom = st.slider("Zoom Level", 9.0, 15.0, float(st.session_state.view_state['zoom']), 0.5)
         with col2:
-            pitch = st.slider(
-                "Map Tilt",
-                min_value=0,
-                max_value=60,
-                value=st.session_state.view_state['pitch'],
-                step=5
-            )
+            pitch = st.slider("Map Tilt", 0, 60, st.session_state.view_state['pitch'], 5)
         with col3:
-            point_size = st.slider(
-                "Marker Size",
-                min_value=50,
-                max_value=500,
-                value=200,
-                step=50
-            )
+            point_size = st.slider("Marker Size", 50, 500, 200, 50)
+
         filter_flat_types = st.multiselect(
-        "Select Flat Types",
-        options=full_df['flat_type'].unique().tolist(),
-        default=full_df['flat_type'].unique().tolist()
+            "Select Flat Types",
+            options=full_df['flat_type'].unique().tolist(),
+            default=full_df['flat_type'].unique().tolist()
         )
 
-        
     st.session_state.view_state.update({'zoom': zoom, 'pitch': pitch})
 
-    # Filter your data to only the selected flat types
+    # Filter to selected flat types
     filtered = full_df[full_df['flat_type'].isin(filter_flat_types)]
 
-    # Group by town, flat type to get average prices
-    avg_price_by_town_flat = (
-        filtered.groupby(['town', 'flat_type'])['resale_price']
-        .mean().reset_index()
-    )
+    if filtered.empty:
+        # No flats selected -> show only town names with "No Data"
+        map_df = town_data.copy()
+        map_df['Tooltip'] = "None set or flat room not found"
+    else:
+        # Compute average price per town/flat type
+        avg_price_by_town_flat = (
+            filtered.groupby(['town', 'flat_type'])['resale_price']
+            .mean().reset_index()
+        )
 
-    # Create tooltip HTML for each town
-    tooltip_texts = (
-        avg_price_by_town_flat
-        .groupby('town')
-        .apply(lambda df: '<br>'.join(f"{ft}: ${p:,.0f}" for ft, p in zip(df['flat_type'], df['resale_price'])))
-        .reset_index(name='Tooltip')
-    )
+        # Create HTML tooltips per town
+        tooltip_series = (
+            avg_price_by_town_flat
+            .groupby('town')
+            .apply(lambda df: '<br>'.join(
+                f"{ft}: ${p:,.0f}" for ft, p in zip(df['flat_type'], df['resale_price'])
+            ))
+        )
 
-    # Merge tooltips back with town_data
-    town_data_tooltips = town_data.merge(tooltip_texts, left_on='Town', right_on='town', how='left')
+        # Convert to DataFrame manually for Pandas 1.x compatibility
+        tooltip_texts = pd.DataFrame({
+            'town': tooltip_series.index,
+            'Tooltip': tooltip_series.values
+        })
 
-    # Map layer
+        # Merge with coordinates
+        map_df = town_data.merge(tooltip_texts, left_on='Town', right_on='town', how='left')
+        map_df = map_df[['Town', 'Latitude', 'Longitude', 'Tooltip']]
+        map_df['Tooltip'] = map_df['Tooltip'].fillna("No Data")  # Avoid NoneType
+
     map_layer = pdk.Layer(
         "ScatterplotLayer",
-        data=town_data_tooltips,
+        data=map_df,
         get_position='[Longitude, Latitude]',
         get_radius=point_size,
         get_fill_color='[255, 140, 0, 180]',
@@ -346,8 +341,9 @@ with tab2:
             tooltip={"html": "<b>{Town}</b><br>{Tooltip}"}
         ),
         use_container_width=True,
-        height = 800
+        height=800
     )
+
 
 
 
