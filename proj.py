@@ -11,6 +11,24 @@ def load_full_df():
 
 full_df = load_full_df()
 
+# --- Ensure 'year' and 'onth_num' exist ---
+if 'year' not in full_df.columns:
+    # Check if there is a 'month' or 'resale_date' column
+    if 'month' in full_df.columns:
+        # Convert to datetime if not already
+        full_df['month'] = pd.to_datetime(full_df['month'], errors='coerce')
+        full_df['year'] = full_df['month'].dt.year
+        full_df['month_num'] = full_df['month'].dt.month
+    elif 'resale_date' in full_df.columns:
+        full_df['resale_date'] = pd.to_datetime(full_df['resale_date'], errors='coerce')
+        full_df['year'] = full_df['resale_date'].dt.year
+        full_df['month_num'] = full_df['resale_date'].dt.month
+    else:
+        st.error("Your dataset needs a 'year' or date column to generate trends.")
+        st.stop()
+
+
+
 
 # Set your Mapbox token (required for 3D maps)
 pdk.settings.mapbox_api_key = "YOUR_MAPBOX_PUBLIC_KEY"
@@ -122,10 +140,11 @@ st.markdown("""
 st.markdown("---")
 
 # Create tabs
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "🏡 Price Prediction", 
     "🗺️ Singapore Map", 
-    "📊 Market Insights"
+    "📊 Market Insights",
+    "⚖️ Compare Towns"   
 ])
 
 def update_map_center(town):
@@ -206,10 +225,10 @@ with tab1:
 
         with col2:
             st.subheader("Prediction Results")
-            if submitted:
+            if submitted and valid:
                 # Update map center when form is submitted
                 update_map_center(town)
-                
+
                 with st.spinner("Calculating estimate..."):
                     # Prepare input data
                     input_df = pd.DataFrame({
@@ -220,16 +239,16 @@ with tab1:
                         'flat_type': [flat_type],
                         'storey_range': [storey_range]
                     })
-                    
+
                     # One-hot encode categorical variables
                     input_df = pd.get_dummies(input_df, columns=['town', 'flat_type', 'storey_range'])
-                    
+
                     # Ensure all expected columns are present
                     for col in EXPECTED_COLUMNS:
                         input_df[col] = input_df.get(col, 0)
-                    
+
                     input_df = input_df[EXPECTED_COLUMNS]
-                    
+
                     # Make prediction
                     try:
                         prediction = model.predict(input_df.values)[0]
@@ -247,17 +266,51 @@ with tab1:
                         """, unsafe_allow_html=True)
                     except Exception as e:
                         st.error(f"Prediction failed: {str(e)}")
-                    
-                    
-        
-                    with st.expander("Why this price?"):
-                        st.write("""
-                            - Larger floor area increases price.
-                            - Town affects price due to location desirability.
-                            - Flat type influences value (e.g., EXECUTIVE usually more expensive).
-                            - Storey range can affect views and demand.
-                            - Market conditions at the resale date impact price.
-                        """)
+
+                # --- 5-Year Price Trend Chart ---
+                import matplotlib.pyplot as plt
+                last_5_years = sorted(full_df['year'].unique())[-5:]
+                hist_prices = []
+
+                for y in last_5_years:
+                    yearly_df = pd.DataFrame({
+                        'floor_area_sqm': [floor_area],
+                        'year': [y],
+                        'month_num': [6],  # mid-year for smoother trend
+                        'town': [town],
+                        'flat_type': [flat_type],
+                        'storey_range': [storey_range]
+                    })
+                    yearly_df = pd.get_dummies(yearly_df, columns=['town', 'flat_type', 'storey_range'])
+                    for col in EXPECTED_COLUMNS:
+                        yearly_df[col] = yearly_df.get(col, 0)
+                    yearly_df = yearly_df[EXPECTED_COLUMNS]
+
+                    try:
+                        pred_price = model.predict(yearly_df.values)[0]
+                        hist_prices.append({'Year': y, 'Predicted Price': pred_price})
+                    except Exception:
+                        hist_prices.append({'Year': y, 'Predicted Price': None})
+
+                hist_df = pd.DataFrame(hist_prices)
+
+                fig_hist, ax_hist = plt.subplots(figsize=(6, 4), dpi=150)
+                ax_hist.plot(hist_df['Year'], hist_df['Predicted Price'], marker='o', color='green')
+                ax_hist.set_title(f"Price Trend for {flat_type} ({storey_range}) in {town}")
+                ax_hist.set_xlabel("Year")
+                ax_hist.set_ylabel("Predicted Price (SGD)")
+                ax_hist.grid(True)
+                st.pyplot(fig_hist)
+
+                with st.expander("Why this price?"):
+                    st.write("""
+                        - Larger floor area increases price.
+                        - Town affects price due to location desirability.
+                        - Flat type influences value (e.g., EXECUTIVE usually more expensive).
+                        - Storey range can affect views and demand.
+                        - Market conditions at the resale date impact price.
+                    """)
+
                 
 
 
@@ -347,9 +400,26 @@ with tab2:
 
 
 
+
 # --- INSIGHTS TAB ---
-# --- INSIGHTS TAB ---
+# --- INSI
+# GHTS TAB ---
 with tab3:
+
+
+    selected_town_tab3 = st.selectbox(
+        "Select Town for Market Insights",
+        sorted(town_data['Town'].unique()),
+        index=list(sorted(town_data['Town'].unique())).index(st.session_state.selected_town)
+        if st.session_state.selected_town in town_data['Town'].values
+        else 0,
+        key='insight_town'
+    )
+
+    # Sync with session state
+    if selected_town_tab3 != st.session_state.selected_town:
+        st.session_state.selected_town = selected_town_tab3
+        update_map_center(selected_town_tab3)
     st.subheader(f"Market Insights for {st.session_state.selected_town}")
 
     # Inputs for analysis
@@ -463,6 +533,52 @@ with tab3:
             ax2.set_xlabel("Price (SGD)")
             ax2.set_ylabel("Count")
             st.pyplot(fig2)
+ 
+with tab4:
+    st.subheader("Compare Two Towns/Flats")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        town1 = st.selectbox("Select Town 1", sorted(town_data['Town'].unique()), key='compare_town1')
+        flat1 = st.selectbox("Flat Type 1", flat_types, key='compare_flat1')
+        storey1 = st.selectbox("Storey Range 1", storey_ranges, key='compare_storey1')
+
+    with col2:
+        town2 = st.selectbox("Select Town 2", sorted(town_data['Town'].unique()), key='compare_town2')
+        flat2 = st.selectbox("Flat Type 2", flat_types, key='compare_flat2')
+        storey2 = st.selectbox("Storey Range 2", storey_ranges, key='compare_storey2')
+
+    compare_area = st.number_input("Floor Area (sqm) for Comparison", 20.0, 300.0, 90.0, 1.0)
+
+    if st.button("Compare Prices"):
+        def predict_price(town, flat, storey, area):
+            df = pd.DataFrame({
+                'floor_area_sqm': [area],
+                'year': [datetime.now().year],
+                'month_num': [datetime.now().month],
+                'town': [town],
+                'flat_type': [flat],
+                'storey_range': [storey]
+            })
+            df = pd.get_dummies(df, columns=['town','flat_type','storey_range'])
+            for col in EXPECTED_COLUMNS:
+                df[col] = df.get(col, 0)
+            df = df[EXPECTED_COLUMNS]
+            return model.predict(df.values)[0]
+
+        price1 = predict_price(town1, flat1, storey1, compare_area)
+        price2 = predict_price(town2, flat2, storey2, compare_area)
+
+        col1.metric("Estimated Price Town 1", format_price(price1))
+        col2.metric("Estimated Price Town 2", format_price(price2))
+
+        diff = price1 - price2
+        st.write(f"💡 **Price Difference:** {format_price(abs(diff))} ({'Town 1 higher' if diff>0 else 'Town 2 higher'})")
+
+
+
+
 
 
 
