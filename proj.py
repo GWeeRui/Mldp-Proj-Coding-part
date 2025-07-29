@@ -345,7 +345,8 @@ with tab2:
             initial_view_state=view_state,
             tooltip={"html": "<b>{Town}</b><br>{Tooltip}"}
         ),
-        use_container_width=True
+        use_container_width=True,
+        height = 800
     )
 
 
@@ -440,29 +441,33 @@ with tab3:
             except Exception:
                 monthly_prices.append(None)
 
-        fig1, ax1 = plt.subplots(figsize=(7, 3), dpi=150)
-        ax1.plot(months, monthly_prices, marker='o')
-        ax1.set_title(f"{selected_flat_type} Price Trend ({selected_storey_range}, {year})")
-        ax1.set_xlabel("Month")
-        ax1.set_ylabel("Predicted Price (SGD)")
-        ax1.grid(True)
-        st.pyplot(fig1)
+        col1, col2 = st.columns(2)
 
-        # Price distribution across all flat types
-        fig2, ax2 = plt.subplots(figsize=(7, 3))
-        sns.histplot(
-            data=results_df,
-            x='Price',
-            hue='Flat Type',
-            multiple='stack',
-            kde=True,
-            palette='Set2',
-            ax=ax2
-        )
-        ax2.set_title("Price Distribution by Flat Type")
-        ax2.set_xlabel("Price (SGD)")
-        ax2.set_ylabel("Count")
-        st.pyplot(fig2)
+        with col1:
+            fig1, ax1 = plt.subplots(figsize=(6, 4), dpi=150)
+            ax1.plot(months, monthly_prices, marker='o')
+            ax1.set_title(f"{selected_flat_type} Price Trend ({selected_storey_range}, {year})")
+            ax1.set_xlabel("Month")
+            ax1.set_ylabel("Predicted Price (SGD)")
+            ax1.grid(True)
+            st.pyplot(fig1)
+
+        with col2:
+            fig2, ax2 = plt.subplots(figsize=(6, 4), dpi=130)
+            sns.histplot(
+                data=results_df,
+                x='Price',
+                hue='Flat Type',
+                multiple='stack',
+                kde=True,
+                palette='Set2',
+                ax=ax2
+            )
+            ax2.set_title("Price Distribution by Flat Type")
+            ax2.set_xlabel("Price (SGD)")
+            ax2.set_ylabel("Count")
+            st.pyplot(fig2)
+
 
 
 
