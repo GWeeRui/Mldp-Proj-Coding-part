@@ -322,6 +322,8 @@ with tab1:
 with tab2:
     st.subheader("HDB Towns in Singapore")
     
+
+
     # Map controls
     with st.expander("Map Settings", expanded=True):
         col1, col2, col3 = st.columns(3)
@@ -338,7 +340,14 @@ with tab2:
             default=full_df['flat_type'].unique().tolist()
         )
 
+
     st.session_state.view_state.update({'zoom': zoom, 'pitch': pitch})
+    map_placeholder = st.empty()
+
+     # Step 1: Show loading
+    with map_placeholder.container():
+        st.info("⏳ Loading map data...")
+        
 
     # Filter to selected flat types
     filtered = full_df[full_df['flat_type'].isin(filter_flat_types)]
@@ -374,31 +383,33 @@ with tab2:
         map_df = map_df[['Town', 'Latitude', 'Longitude', 'Tooltip']]
         map_df['Tooltip'] = map_df['Tooltip'].fillna("No Data")  # Avoid NoneType
 
-    map_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=map_df,
-        get_position='[Longitude, Latitude]',
-        get_radius=point_size,
-        get_fill_color='[255, 140, 0, 180]',
-        pickable=True
-    )
+    with map_placeholder.container():
 
-    view_state = pdk.ViewState(
-        latitude=1.3521,
-        longitude=103.8198,
-        zoom=zoom,
-        pitch=pitch
-    )
+        map_layer = pdk.Layer(
+            "ScatterplotLayer",
+            data=map_df,
+            get_position='[Longitude, Latitude]',
+            get_radius=point_size,
+            get_fill_color='[255, 140, 0, 180]',
+            pickable=True
+        )
 
-    st.pydeck_chart(
-        pdk.Deck(
-            layers=[map_layer],
-            initial_view_state=view_state,
-            tooltip={"html": "<b>{Town}</b><br>{Tooltip}"}
-        ),
-        use_container_width=True,
-        height=800
-    )
+        view_state = pdk.ViewState(
+            latitude=1.3521,
+            longitude=103.8198,
+            zoom=zoom,
+            pitch=pitch
+        )
+
+        st.pydeck_chart(
+            pdk.Deck(
+                layers=[map_layer],
+                initial_view_state=view_state,
+                tooltip={"html": "<b>{Town}</b><br>{Tooltip}"}
+            ),
+            use_container_width=True,
+            height=800
+        )
 
 
 
@@ -424,6 +435,13 @@ with tab3:
         st.session_state.selected_town = selected_town_tab3
         update_map_center(selected_town_tab3)
     st.subheader(f"Market Insights for {st.session_state.selected_town}")
+
+    results_placeholder = st.empty()
+
+    # Show loading first
+    with results_placeholder.container():
+        st.info("⏳ Calculating market insights...")
+        
 
     # Inputs for analysis
     floor_area = st.number_input("Floor Area for Analysis (sqm)", min_value=20.0, max_value=300.0, value=90.0, step=1.0, key='insight_floor')
@@ -471,74 +489,78 @@ with tab3:
 
     results_df = pd.DataFrame(results)
 
-    st.metric("Average Price in Area", format_price(results_df['Price'].mean()), help="Average across all flat types and storey ranges")
+    with results_placeholder.container():
 
-    affordable = results_df[results_df['Within Budget']]
-    if not affordable.empty:
-        st.success(f"Found {len(affordable)} options within your budget")
-        st.dataframe(affordable[['Flat Type', 'Storey Range', 'Price']].sort_values('Price').style.format({'Price': format_price}), use_container_width=True)
-    else:
-        st.warning("No options found within your budget")
-        st.info("Here are the 5 most affordable options:")
-        st.dataframe(results_df[['Flat Type', 'Storey Range', 'Price']].nsmallest(5, 'Price').style.format({'Price': format_price}), use_container_width=True)
+        st.metric("Average Price in Area", format_price(results_df['Price'].mean()), help="Average across all flat types and storey ranges")
 
-    # --- DYNAMIC CHARTS ---
-    import matplotlib.pyplot as plt
-    import seaborn as sns
+        affordable = results_df[results_df['Within Budget']]
+        if not affordable.empty:
+            st.success(f"Found {len(affordable)} options within your budget")
+            st.dataframe(affordable[['Flat Type', 'Storey Range', 'Price']].sort_values('Price').style.format({'Price': format_price}), use_container_width=True)
+        else:
+            st.warning("No options found within your budget")
+            st.info("Here are the 5 most affordable options:")
+            st.dataframe(results_df[['Flat Type', 'Storey Range', 'Price']].nsmallest(5, 'Price').style.format({'Price': format_price}), use_container_width=True)
 
-    if show_charts:
-        # Monthly trend for selected flat + storey
-        months = pd.date_range(start=f"{year}-01", periods=12, freq='M')
-        monthly_prices = []
-        for m in range(1, 13):
-            input_df = pd.DataFrame({
-                'floor_area_sqm': [floor_area],
-                'year': [year],
-                'month_num': [m],
-                'town': [st.session_state.selected_town],
-                'flat_type': [selected_flat_type],
-                'storey_range': [selected_storey_range]
-            })
-            input_df = pd.get_dummies(input_df, columns=['town', 'flat_type', 'storey_range'])
-            for col in EXPECTED_COLUMNS:
-                input_df[col] = input_df.get(col, 0)
-            input_df = input_df[EXPECTED_COLUMNS]
+        # --- DYNAMIC CHARTS ---
+        import matplotlib.pyplot as plt
+        import seaborn as sns
 
-            try:
-                pred_price = model.predict(input_df.values)[0]
-                monthly_prices.append(pred_price)
-            except Exception:
-                monthly_prices.append(None)
+        if show_charts:
+            # Monthly trend for selected flat + storey
+            months = pd.date_range(start=f"{year}-01", periods=12, freq='M')
+            monthly_prices = []
+            for m in range(1, 13):
+                input_df = pd.DataFrame({
+                    'floor_area_sqm': [floor_area],
+                    'year': [year],
+                    'month_num': [m],
+                    'town': [st.session_state.selected_town],
+                    'flat_type': [selected_flat_type],
+                    'storey_range': [selected_storey_range]
+                })
+                input_df = pd.get_dummies(input_df, columns=['town', 'flat_type', 'storey_range'])
+                for col in EXPECTED_COLUMNS:
+                    input_df[col] = input_df.get(col, 0)
+                input_df = input_df[EXPECTED_COLUMNS]
 
-        col1, col2 = st.columns(2)
+                try:
+                    pred_price = model.predict(input_df.values)[0]
+                    monthly_prices.append(pred_price)
+                except Exception:
+                    monthly_prices.append(None)
 
-        with col1:
-            fig1, ax1 = plt.subplots(figsize=(6, 4), dpi=150)
-            ax1.plot(months, monthly_prices, marker='o')
-            ax1.set_title(f"{selected_flat_type} Price Trend ({selected_storey_range}, {year})")
-            ax1.set_xlabel("Month")
-            ax1.set_ylabel("Predicted Price (SGD)")
-            ax1.grid(True)
-            st.pyplot(fig1)
+            col1, col2 = st.columns(2)
 
-        with col2:
-            fig2, ax2 = plt.subplots(figsize=(6, 4), dpi=130)
-            sns.histplot(
-                data=results_df,
-                x='Price',
-                hue='Flat Type',
-                multiple='stack',
-                kde=True,
-                palette='Set2',
-                ax=ax2
-            )
-            ax2.set_title("Price Distribution by Flat Type")
-            ax2.set_xlabel("Price (SGD)")
-            ax2.set_ylabel("Count")
-            st.pyplot(fig2)
- 
+            with col1:
+                fig1, ax1 = plt.subplots(figsize=(6, 4), dpi=150)
+                ax1.plot(months, monthly_prices, marker='o')
+                ax1.set_title(f"{selected_flat_type} Price Trend ({selected_storey_range}, {year})")
+                ax1.set_xlabel("Month")
+                ax1.set_ylabel("Predicted Price (SGD)")
+                ax1.grid(True)
+                st.pyplot(fig1)
+
+            with col2:
+                fig2, ax2 = plt.subplots(figsize=(6, 4), dpi=130)
+                sns.histplot(
+                    data=results_df,
+                    x='Price',
+                    hue='Flat Type',
+                    multiple='stack',
+                    kde=True,
+                    palette='Set2',
+                    ax=ax2
+                )
+                ax2.set_title("Price Distribution by Flat Type")
+                ax2.set_xlabel("Price (SGD)")
+                ax2.set_ylabel("Count")
+                st.pyplot(fig2)
+    
 with tab4:
     st.subheader("Compare Two Towns/Flats")
+
+    compare_placeholder = st.empty()
 
     col1, col2 = st.columns(2)
 
@@ -569,15 +591,21 @@ with tab4:
                 df[col] = df.get(col, 0)
             df = df[EXPECTED_COLUMNS]
             return model.predict(df.values)[0]
+        
+        with compare_placeholder.container():
+            st.info("⏳ Comparing towns...")
+            
 
         price1 = predict_price(town1, flat1, storey1, compare_area)
         price2 = predict_price(town2, flat2, storey2, compare_area)
 
-        col1.metric("Estimated Price Town 1", format_price(price1))
-        col2.metric("Estimated Price Town 2", format_price(price2))
+        with compare_placeholder.container():
 
-        diff = price1 - price2
-        st.write(f"💡 **Price Difference:** {format_price(abs(diff))} ({'Town 1 higher' if diff>0 else 'Town 2 higher'})")
+            col1.metric("Estimated Price Town 1", format_price(price1))
+            col2.metric("Estimated Price Town 2", format_price(price2))
+
+            diff = price1 - price2
+            st.write(f"💡 **Price Difference:** {format_price(abs(diff))} ({'Town 1 higher' if diff>0 else 'Town 2 higher'})")
 
 
 
