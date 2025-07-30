@@ -205,8 +205,6 @@ with tab1:
             )
             submitted = st.form_submit_button("Predict Price", type="primary")
 
-            
-            
     if submitted:
         valid = True
         if floor_area <= 0:
@@ -221,12 +219,10 @@ with tab1:
 
         if valid:
             update_map_center(town)
-        
 
         with col2:
             st.subheader("Prediction Results")
             if submitted and valid:
-                # Update map center when form is submitted
                 update_map_center(town)
 
                 with st.spinner("Calculating estimate..."):
@@ -267,40 +263,48 @@ with tab1:
                     except Exception as e:
                         st.error(f"Prediction failed: {str(e)}")
 
-                # --- 5-Year Price Trend Chart ---
-                import matplotlib.pyplot as plt
-                last_5_years = sorted(full_df['year'].unique())[-5:]
-                hist_prices = []
+                # --- Price Trend Chart (2017 to Selected Year) ---
+                    import matplotlib.pyplot as plt
 
-                for y in last_5_years:
-                    yearly_df = pd.DataFrame({
-                        'floor_area_sqm': [floor_area],
-                        'year': [y],
-                        'month_num': [6],  # mid-year for smoother trend
-                        'town': [town],
-                        'flat_type': [flat_type],
-                        'storey_range': [storey_range]
-                    })
-                    yearly_df = pd.get_dummies(yearly_df, columns=['town', 'flat_type', 'storey_range'])
-                    for col in EXPECTED_COLUMNS:
-                        yearly_df[col] = yearly_df.get(col, 0)
-                    yearly_df = yearly_df[EXPECTED_COLUMNS]
+                    # Determine year range: 2017 to selected year
+                    start_year = max(2017, full_df['year'].min())  # Ensure dataset covers 2017
+                    end_year = year
+                    trend_years = list(range(start_year, end_year + 1))
 
-                    try:
-                        pred_price = model.predict(yearly_df.values)[0]
-                        hist_prices.append({'Year': y, 'Predicted Price': pred_price})
-                    except Exception:
-                        hist_prices.append({'Year': y, 'Predicted Price': None})
+                    hist_prices = []
 
-                hist_df = pd.DataFrame(hist_prices)
+                    for y in trend_years:
+                        yearly_df = pd.DataFrame({
+                            'floor_area_sqm': [floor_area],
+                            'year': [y],
+                            'month_num': [6],  # mid-year for smoother trend
+                            'town': [town],
+                            'flat_type': [flat_type],
+                            'storey_range': [storey_range]
+                        })
+                        yearly_df = pd.get_dummies(yearly_df, columns=['town', 'flat_type', 'storey_range'])
+                        for col in EXPECTED_COLUMNS:
+                            yearly_df[col] = yearly_df.get(col, 0)
+                        yearly_df = yearly_df[EXPECTED_COLUMNS]
 
-                fig_hist, ax_hist = plt.subplots(figsize=(6, 4), dpi=150)
-                ax_hist.plot(hist_df['Year'], hist_df['Predicted Price'], marker='o', color='green')
-                ax_hist.set_title(f"Price Trend for {flat_type} ({storey_range}) in {town}")
-                ax_hist.set_xlabel("Year")
-                ax_hist.set_ylabel("Predicted Price (SGD)")
-                ax_hist.grid(True)
-                st.pyplot(fig_hist)
+                        try:
+                            pred_price = model.predict(yearly_df.values)[0]
+                            hist_prices.append({'Year': y, 'Predicted Price': pred_price})
+                        except Exception:
+                            hist_prices.append({'Year': y, 'Predicted Price': None})
+
+                    # Convert to DataFrame
+                    hist_df = pd.DataFrame(hist_prices)
+
+                    # Plot trend
+                    fig_hist, ax_hist = plt.subplots(figsize=(6, 4), dpi=150)
+                    ax_hist.plot(hist_df['Year'], hist_df['Predicted Price'], marker='o', color='green')
+                    ax_hist.set_title(f"Price Trend for {flat_type} ({storey_range}) in {town} (2017–{year})")
+                    ax_hist.set_xlabel("Year")
+                    ax_hist.set_ylabel("Predicted Price (SGD)")
+                    ax_hist.grid(True)
+                    st.pyplot(fig_hist)
+
 
                 with st.expander("Why this price?"):
                     st.write("""
@@ -311,7 +315,6 @@ with tab1:
                         - Market conditions at the resale date impact price.
                     """)
 
-                
 
 
 # --- MAP TAB ---
