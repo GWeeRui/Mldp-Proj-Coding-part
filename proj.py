@@ -3,21 +3,21 @@ import pandas as pd
 import joblib
 import pydeck as pdk
 from datetime import datetime
-# --- Price Trend Chart (2017 to Selected Year) ---
+
 import matplotlib.pyplot as plt
 
 @st.cache_data
 def load_full_df():
-    # Replace with your actual data loading, e.g.:
+ 
     return pd.read_csv("Flat prices(mld project).csv")
 
 full_df = load_full_df()
 
-# --- Ensure 'year' and 'onth_num' exist ---
+
 if 'year' not in full_df.columns:
-    # Check if there is a 'month' or 'resale_date' column
+    
     if 'month' in full_df.columns:
-        # Convert to datetime if not already
+        
         full_df['month'] = pd.to_datetime(full_df['month'], errors='coerce')
         full_df['year'] = full_df['month'].dt.year
         full_df['month_num'] = full_df['month'].dt.month
@@ -29,9 +29,9 @@ if 'year' not in full_df.columns:
         st.error("Your dataset needs a 'year' or date column to generate trends.")
         st.stop()
 
-# Set your Mapbox token (required for 3D maps)
+
 pdk.settings.mapbox_api_key = "YOUR_MAPBOX_PUBLIC_KEY"
-# --- PAGE CONFIGURATION ---
+
 st.set_page_config(
     page_title="HDB Resale Price Predictor",
     page_icon="🏠",
@@ -39,7 +39,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CUSTOM STYLING ---
+
 def apply_custom_styles():
     st.markdown("""
         <style>
@@ -56,7 +56,6 @@ def apply_custom_styles():
 
 apply_custom_styles()
 
-# --- DATA LOADING ---
 @st.cache_data
 def load_town_data():
     """Load geographical data for HDB towns."""
@@ -93,11 +92,11 @@ def load_model():
         st.error("Model file not found. Please ensure 'resale_model.pkl' exists.")
         st.stop()
 
-# Initialize data and model
+
 town_data = load_town_data()
 model = load_model()
 
-# --- MODEL CONFIGURATION ---
+
 EXPECTED_COLUMNS = [
     'floor_area_sqm', 'year', 'month_num',
     *['town_' + t for t in town_data['Town']],
@@ -111,7 +110,7 @@ EXPECTED_COLUMNS = [
     ]]
 ]
 
-# --- SESSION STATE MANAGEMENT ---
+
 if 'view_state' not in st.session_state:
     st.session_state.view_state = {
         'latitude': 1.3521,
@@ -127,7 +126,7 @@ def format_price(price):
     """Format price as SGD currency."""
     return f"${price:,.0f}"
 
-# --- MAIN APP ---
+
 st.title("🏠 Singapore HDB Resale Price Predictor")
 st.markdown("""
     <div class='header-text'>
@@ -136,7 +135,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.markdown("---")
 
-# Create tabs
 tab1, tab2, tab3, tab4 = st.tabs([
     "🏡 Price Prediction", 
     "🗺️ Singapore Map", 
@@ -156,7 +154,7 @@ def update_map_center(town):
 
 
 
-# --- PRICE PREDICTION TAB ---
+
 with tab1:
     col1, col2 = st.columns([1, 1])
 
@@ -229,7 +227,7 @@ with tab1:
                         - Storey range can affect views and demand.
                         - Market conditions at the resale date impact price.
                     """)
-                     # --- Feature Importance ---
+                    
                     feature_importances = pd.Series(model.feature_importances_, index=EXPECTED_COLUMNS)
 
                
@@ -247,7 +245,7 @@ with tab1:
 
 
                 with st.spinner("Calculating estimate..."):
-                    # Prepare input data
+                   
                     input_df = pd.DataFrame({
                         'floor_area_sqm': [floor_area],
                         'year': [year],
@@ -257,15 +255,15 @@ with tab1:
                         'storey_range': [storey_range]
                     })
 
-                    # One-hot encode categorical variables
+                    
                     input_df = pd.get_dummies(input_df, columns=['town', 'flat_type', 'storey_range'])
 
-                    # Ensure all expected columns are present
+                   
                     for col in EXPECTED_COLUMNS:
                         input_df[col] = input_df.get(col, 0)
                     input_df = input_df[EXPECTED_COLUMNS]
 
-                    # Make prediction
+                   
                     try:
                         prediction = model.predict(input_df.values)[0]
                         st.metric(
@@ -308,7 +306,7 @@ with tab1:
 
                     df_pred = pd.DataFrame(pred_rows)
 
-                    # --- Plot the trend graph ---
+                   
                     fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
                     ax.plot(df_pred['Year'], df_pred['Predicted Price'], marker='o', color='blue')
                     ax.set_title(f"Predicted Price Trend in {town} ({flat_type}, {storey_range})")
@@ -323,7 +321,7 @@ with tab1:
                 
 with tab2:
     st.subheader("HDB Towns in Singapore")
-    # Map controls
+
     with st.expander("Map Settings", expanded=True):
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -343,24 +341,24 @@ with tab2:
     st.session_state.view_state.update({'zoom': zoom, 'pitch': pitch})
     map_placeholder = st.empty()
 
-     # Step 1: Show loading
+
     with map_placeholder.container():
         st.info("⏳ Loading map data...")
-    # Filter to selected flat types
+
     filtered = full_df[full_df['flat_type'].isin(filter_flat_types)]
 
     if filtered.empty:
-        # No flats selected -> show only town names with "No Data"
+   
         map_df = town_data.copy()
         map_df['Tooltip'] = "None set or flat room not found"
     else:
-        # Compute average price per town/flat type
+        
         avg_price_by_town_flat = (
             filtered.groupby(['town', 'flat_type'])['resale_price']
             .mean().reset_index()
         )
 
-        # Create HTML tooltips per town
+      
         tooltip_series = (
             avg_price_by_town_flat
             .groupby('town')
@@ -369,16 +367,15 @@ with tab2:
             ))
         )
 
-        # Convert to DataFrame manually for Pandas 1.x compatibility
+
         tooltip_texts = pd.DataFrame({
             'town': tooltip_series.index,
             'Tooltip': tooltip_series.values
         })
 
-        # Merge with coordinates
         map_df = town_data.merge(tooltip_texts, left_on='Town', right_on='town', how='left')
         map_df = map_df[['Town', 'Latitude', 'Longitude', 'Tooltip']]
-        map_df['Tooltip'] = map_df['Tooltip'].fillna("No Data")  # Avoid NoneType
+        map_df['Tooltip'] = map_df['Tooltip'].fillna("No Data") 
 
     with map_placeholder.container():
 
@@ -411,7 +408,7 @@ with tab2:
 with tab3:
     st.subheader(f"Market Insights for {st.session_state.selected_town}")
 
-    # --- 1️⃣ FEATURE SELECTION FIRST ---
+   
     floor_area = st.number_input(
         "Floor Area for Analysis (sqm)", 20.0, 300.0, 90.0, step=1.0, key='insight_floor'
     )
@@ -437,7 +434,7 @@ with tab3:
     selected_storey_range = st.selectbox("Select Storey Range for Trend Analysis", storey_ranges, index=3)
     show_charts = st.checkbox("Show Charts", value=True)
 
-    # --- 2️⃣ BUDGET CALCULATION & TABLE ---
+  
     results = []
     for f_type in flat_types:
         for storey in storey_ranges:
@@ -485,12 +482,12 @@ with tab3:
             use_container_width=True
         )
 
-    # --- 3️⃣ GRAPHS AT THE END ---
+
     if show_charts:
         import matplotlib.pyplot as plt
         import seaborn as sns
 
-        # Monthly trend for selected flat + storey
+      
         months = pd.date_range(start=f"{year}-01", periods=12, freq='M')
         monthly_prices = []
         for m in range(1, 13):
@@ -539,7 +536,7 @@ with tab3:
 with tab4:
     st.subheader("Compare Two Towns/Flats")
 
-    # --- Input Boxes Above ---
+
     st.markdown("### Comparison Inputs")
     input_col1, input_col2 = st.columns(2)
 
@@ -573,7 +570,7 @@ with tab4:
             df = df[EXPECTED_COLUMNS]
             return model.predict(df.values)[0]
 
-        # --- Price Metrics ---
+     
         price1 = predict_price(town1, flat1, storey1, compare_area)
         price2 = predict_price(town2, flat2, storey2, compare_area)
 
@@ -584,7 +581,6 @@ with tab4:
         diff = price1 - price2
         st.write(f"💡 **Price Difference:** {format_price(abs(diff))} ({'Town 1 higher' if diff>0 else 'Town 2 higher'})")
 
-        # --- Smaller Price Trend Line Graph ---
         import matplotlib.pyplot as plt
 
         years = list(range(2017, datetime.now().year + 1))
@@ -594,7 +590,7 @@ with tab4:
             trend1.append(predict_price(town1, flat1, storey1, compare_area, year=y, month=6))
             trend2.append(predict_price(town2, flat2, storey2, compare_area, year=y, month=6))
 
-        fig, ax = plt.subplots(figsize=(4, 2.5), dpi=100)  # smaller graph
+        fig, ax = plt.subplots(figsize=(4, 2.5), dpi=100) 
         ax.plot(years, trend1, marker='o', color='blue', label=f"{town1} ({flat1})")
         ax.plot(years, trend2, marker='o', color='green', label=f"{town2} ({flat2})")
         ax.set_title("Price Trend Comparison")
@@ -604,8 +600,6 @@ with tab4:
         ax.grid(True)
         st.pyplot(fig)
 
-
-# --- FOOTER ---
 st.markdown("---")
 st.markdown("""
     <div class='footer'>
