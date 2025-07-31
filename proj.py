@@ -3,6 +3,8 @@ import pandas as pd
 import joblib
 import pydeck as pdk
 from datetime import datetime
+# --- Price Trend Chart (2017 to Selected Year) ---
+import matplotlib.pyplot as plt
 
 @st.cache_data
 def load_full_df():
@@ -227,6 +229,22 @@ with tab1:
                         - Storey range can affect views and demand.
                         - Market conditions at the resale date impact price.
                     """)
+                     # --- Feature Importance ---
+                    feature_importances = pd.Series(model.feature_importances_, index=EXPECTED_COLUMNS)
+
+               
+                    top_features = feature_importances.nlargest(15)
+
+                    fig_imp, ax_imp = plt.subplots(figsize=(7, 4))
+                    top_features.sort_values().plot(kind='barh', color='green', ax=ax_imp)
+                    ax_imp.set_title("Top 15 Feature Importances - Random Forest")
+                    st.pyplot(fig_imp)
+
+                    st.caption("""
+                    - **Higher bars** = feature has more influence on price predictions.  
+                    - Example: `town_QUEENSTOWN` high → location strongly impacts price.  
+                    """)
+
 
                 with st.spinner("Calculating estimate..."):
                     # Prepare input data
@@ -266,8 +284,7 @@ with tab1:
                         st.error(f"Prediction failed: {str(e)}")
                         st.stop()
 
-                    # --- Price Trend Chart (2017 to Selected Year) ---
-                    import matplotlib.pyplot as plt
+                    
 
                     years = list(range(2017, year + 1))
                     pred_rows = []
@@ -300,27 +317,7 @@ with tab1:
                     ax.grid(True)
                     st.pyplot(fig)
 
-                    # --- Feature Importance ---
-                    feature_importances = pd.Series(model.feature_importances_, index=EXPECTED_COLUMNS)
-
-                    focus = st.radio("Focus Feature Importance On:", ['All Features', 'Towns Only', 'Storey Only'])
-                    if focus == 'Towns Only':
-                        feature_importances = feature_importances[[c for c in EXPECTED_COLUMNS if c.startswith('town_')]]
-                    elif focus == 'Storey Only':
-                        feature_importances = feature_importances[[c for c in EXPECTED_COLUMNS if c.startswith('storey_range_')]]
-
-                    top_features = feature_importances.nlargest(15)
-
-                    fig_imp, ax_imp = plt.subplots(figsize=(8, 5))
-                    top_features.sort_values().plot(kind='barh', color='green', ax=ax_imp)
-                    ax_imp.set_title("Top 15 Feature Importances - Random Forest")
-                    st.pyplot(fig_imp)
-
-                    st.caption("""
-                    - **Higher bars** = feature has more influence on price predictions.  
-                    - Example: `town_QUEENSTOWN` high → location strongly impacts price.  
-                    """)
-
+                   
 
 
                 
@@ -597,7 +594,7 @@ with tab4:
             trend1.append(predict_price(town1, flat1, storey1, compare_area, year=y, month=6))
             trend2.append(predict_price(town2, flat2, storey2, compare_area, year=y, month=6))
 
-        fig, ax = plt.subplots(figsize=(5, 3), dpi=100)  # smaller graph
+        fig, ax = plt.subplots(figsize=(4, 2.5), dpi=100)  # smaller graph
         ax.plot(years, trend1, marker='o', color='blue', label=f"{town1} ({flat1})")
         ax.plot(years, trend2, marker='o', color='green', label=f"{town2} ({flat2})")
         ax.set_title("Price Trend Comparison")
