@@ -102,8 +102,9 @@ EXPECTED_COLUMNS = [
     'flat_type_1 ROOM', 'flat_type_2 ROOM', 'flat_type_3 ROOM', 'flat_type_4 ROOM',
     'flat_type_5 ROOM', 'flat_type_EXECUTIVE', 'flat_type_MULTI-GENERATION',
     *['storey_range_' + s for s in [
-        '01 TO 03', '04 TO 06', '07 TO 09', '10 TO 12', '13 TO 15', '16 TO 18',
-        '19 TO 21', '22 TO 24', '25 TO 27', '28 TO 30', '31 TO 33', '34 TO 36',
+        '01 TO 03', '04 TO 06', '07 TO 09', '10 TO 12', 
+        '13 TO 15', '16 TO 18', '19 TO 21', '22 TO 24',
+        '25 TO 27', '28 TO 30', '31 TO 33', '34 TO 36',
         '37 TO 39', '40 TO 42', '43 TO 45', '46 TO 48', '49 TO 51'
     ]]
 ]
@@ -152,6 +153,7 @@ def update_map_center(town):
     st.session_state.selected_town = town
 
 
+
 # --- PRICE PREDICTION TAB ---
 with tab1:
     col1, col2 = st.columns([1, 1])
@@ -193,9 +195,9 @@ with tab1:
             storey_range = st.selectbox(
                 "Storey Range",
                 ['01 TO 03', '04 TO 06', '07 TO 09', '10 TO 12', 
-                 '13 TO 15', '16 TO 18', '19 TO 21', '22 TO 24',
-                 '25 TO 27', '28 TO 30', '31 TO 33', '34 TO 36',
-                 '37 TO 39', '40 TO 42', '43 TO 45', '46 TO 48', '49 TO 51']
+        '13 TO 15', '16 TO 18', '19 TO 21', '22 TO 24',
+        '25 TO 27', '28 TO 30', '31 TO 33', '34 TO 36',
+        '37 TO 39', '40 TO 42', '43 TO 45', '46 TO 48', '49 TO 51']
             )
             submitted = st.form_submit_button("Predict Price", type="primary")
 
@@ -217,8 +219,6 @@ with tab1:
         with col2:
             st.subheader("Prediction Results")
             if submitted and valid:
-                update_map_center(town)
-                
                 with st.expander("Why this price?"):
                     st.write("""
                         - Larger floor area increases price.
@@ -245,7 +245,6 @@ with tab1:
                     # Ensure all expected columns are present
                     for col in EXPECTED_COLUMNS:
                         input_df[col] = input_df.get(col, 0)
-
                     input_df = input_df[EXPECTED_COLUMNS]
 
                     # Make prediction
@@ -265,22 +264,19 @@ with tab1:
                         """, unsafe_allow_html=True)
                     except Exception as e:
                         st.error(f"Prediction failed: {str(e)}")
+                        st.stop()
 
-                # --- Price Trend Chart (2017 to Selected Year) ---
+                    # --- Price Trend Chart (2017 to Selected Year) ---
                     import matplotlib.pyplot as plt
 
-                    # Determine year range: 2017 to selected year
-                    start_year = max(2017, full_df['year'].min())  # Ensure dataset covers 2017
-                    end_year = year
-                    trend_years = list(range(start_year, end_year + 1))
+                    years = list(range(2017, year + 1))
+                    pred_rows = []
 
-                    hist_prices = []
-
-                    for y in trend_years:
+                    for y in years:
                         yearly_df = pd.DataFrame({
                             'floor_area_sqm': [floor_area],
                             'year': [y],
-                            'month_num': [6],  # mid-year for smoother trend
+                            'month_num': [6],
                             'town': [town],
                             'flat_type': [flat_type],
                             'storey_range': [storey_range]
@@ -290,23 +286,41 @@ with tab1:
                             yearly_df[col] = yearly_df.get(col, 0)
                         yearly_df = yearly_df[EXPECTED_COLUMNS]
 
-                        try:
-                            pred_price = model.predict(yearly_df.values)[0]
-                            hist_prices.append({'Year': y, 'Predicted Price': pred_price})
-                        except Exception:
-                            hist_prices.append({'Year': y, 'Predicted Price': None})
+                        pred_price = model.predict(yearly_df.values)[0]
+                        pred_rows.append({'Year': y, 'Predicted Price': pred_price})
 
-                    # Convert to DataFrame
-                    hist_df = pd.DataFrame(hist_prices)
+                    df_pred = pd.DataFrame(pred_rows)
 
-                    # Plot trend
-                    fig_hist, ax_hist = plt.subplots(figsize=(6, 4), dpi=150)
-                    ax_hist.plot(hist_df['Year'], hist_df['Predicted Price'], marker='o', color='green')
-                    ax_hist.set_title(f"Price Trend for {flat_type} ({storey_range}) in {town} (2017–{year})")
-                    ax_hist.set_xlabel("Year")
-                    ax_hist.set_ylabel("Predicted Price (SGD)")
-                    ax_hist.grid(True)
-                    st.pyplot(fig_hist)
+                    # --- Plot the trend graph ---
+                    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+                    ax.plot(df_pred['Year'], df_pred['Predicted Price'], marker='o', color='blue')
+                    ax.set_title(f"Predicted Price Trend in {town} ({flat_type}, {storey_range})")
+                    ax.set_xlabel("Year")
+                    ax.set_ylabel("Predicted Price (SGD)")
+                    ax.grid(True)
+                    st.pyplot(fig)
+
+                    # --- Feature Importance ---
+                    feature_importances = pd.Series(model.feature_importances_, index=EXPECTED_COLUMNS)
+
+                    focus = st.radio("Focus Feature Importance On:", ['All Features', 'Towns Only', 'Storey Only'])
+                    if focus == 'Towns Only':
+                        feature_importances = feature_importances[[c for c in EXPECTED_COLUMNS if c.startswith('town_')]]
+                    elif focus == 'Storey Only':
+                        feature_importances = feature_importances[[c for c in EXPECTED_COLUMNS if c.startswith('storey_range_')]]
+
+                    top_features = feature_importances.nlargest(15)
+
+                    fig_imp, ax_imp = plt.subplots(figsize=(8, 5))
+                    top_features.sort_values().plot(kind='barh', color='green', ax=ax_imp)
+                    ax_imp.set_title("Top 15 Feature Importances - Random Forest")
+                    st.pyplot(fig_imp)
+
+                    st.caption("""
+                    - **Higher bars** = feature has more influence on price predictions.  
+                    - Example: `town_QUEENSTOWN` high → location strongly impacts price.  
+                    """)
+
 
 
                 
@@ -398,47 +412,35 @@ with tab2:
         )
 
 with tab3:
-
-
-    selected_town_tab3 = st.selectbox(
-        "Select Town for Market Insights",
-        sorted(town_data['Town'].unique()),
-        index=list(sorted(town_data['Town'].unique())).index(st.session_state.selected_town)
-        if st.session_state.selected_town in town_data['Town'].values
-        else 0,
-        key='insight_town'
-    )
-
-    # Sync with session state
-    if selected_town_tab3 != st.session_state.selected_town:
-        st.session_state.selected_town = selected_town_tab3
-        update_map_center(selected_town_tab3)
     st.subheader(f"Market Insights for {st.session_state.selected_town}")
 
-    results_placeholder = st.empty()
-
-    # Show loading first
-    with results_placeholder.container():
-        st.info("⏳ Calculating market insights...")
-        
-
-    # Inputs for analysis
-    floor_area = st.number_input("Floor Area for Analysis (sqm)", min_value=20.0, max_value=300.0, value=90.0, step=1.0, key='insight_floor')
-    year = st.number_input("Analysis Year", min_value=1990, max_value=datetime.now().year + 1, value=datetime.now().year, step=1, key='insight_year')
-    month = st.number_input("Analysis Month", min_value=1, max_value=12, value=6, step=1, key='insight_month')
-    budget = st.number_input("Your Budget (SGD)", min_value=100000, max_value=2000000, value=500000, step=10000, key='insight_budget')
+    # --- 1️⃣ FEATURE SELECTION FIRST ---
+    floor_area = st.number_input(
+        "Floor Area for Analysis (sqm)", 20.0, 300.0, 90.0, step=1.0, key='insight_floor'
+    )
+    year = st.number_input(
+        "Analysis Year", 1990, datetime.now().year + 1, datetime.now().year, step=1, key='insight_year'
+    )
+    month = st.number_input(
+        "Analysis Month", 1, 12, 6, step=1, key='insight_month'
+    )
+    budget = st.number_input(
+        "Your Budget (SGD)", 100000, 2000000, 500000, step=10000, key='insight_budget'
+    )
 
     flat_types = ['1 ROOM', '2 ROOM', '3 ROOM', '4 ROOM', '5 ROOM', 'EXECUTIVE', 'MULTI-GENERATION']
-    storey_ranges = ['01 TO 03', '04 TO 06', '07 TO 09', '10 TO 12', '13 TO 15', '16 TO 18',
-                    '19 TO 21', '22 TO 24', '25 TO 27', '28 TO 30', '31 TO 33', '34 TO 36',
-                    '37 TO 39', '40 TO 42', '43 TO 45', '46 TO 48', '49 TO 51']
+    storey_ranges = [
+        '01 TO 03', '04 TO 06', '07 TO 09', '10 TO 12', 
+        '13 TO 15', '16 TO 18', '19 TO 21', '22 TO 24',
+        '25 TO 27', '28 TO 30', '31 TO 33', '34 TO 36',
+        '37 TO 39', '40 TO 42', '43 TO 45', '46 TO 48', '49 TO 51'
+    ]
 
     selected_flat_type = st.selectbox("Select Flat Type for Trend Analysis", flat_types, index=2)
     selected_storey_range = st.selectbox("Select Storey Range for Trend Analysis", storey_ranges, index=3)
-    
     show_charts = st.checkbox("Show Charts", value=True)
 
-    # Main prediction loop
+    # --- 2️⃣ BUDGET CALCULATION & TABLE ---
     results = []
     for f_type in flat_types:
         for storey in storey_ranges:
@@ -455,100 +457,101 @@ with tab3:
                 input_df[col] = input_df.get(col, 0)
             input_df = input_df[EXPECTED_COLUMNS]
 
-            try:
-                pred_price = model.predict(input_df.values)[0]
-                results.append({
-                    'Flat Type': f_type,
-                    'Storey Range': storey,
-                    'Price': pred_price,
-                    'Within Budget': pred_price <= budget
-                })
-            except Exception as e:
-                st.error(f"Prediction error: {e}")
+            pred_price = model.predict(input_df.values)[0]
+            results.append({
+                'Flat Type': f_type,
+                'Storey Range': storey,
+                'Price': pred_price,
+                'Within Budget': pred_price <= budget
+            })
 
     results_df = pd.DataFrame(results)
 
-    with results_placeholder.container():
+    st.metric("Average Price in Area", format_price(results_df['Price'].mean()), help="Average across all flat types and storey ranges")
 
-        st.metric("Average Price in Area", format_price(results_df['Price'].mean()), help="Average across all flat types and storey ranges")
+    affordable = results_df[results_df['Within Budget']]
+    if not affordable.empty:
+        st.success(f"Found {len(affordable)} options within your budget")
+        st.dataframe(
+            affordable[['Flat Type', 'Storey Range', 'Price']]
+            .sort_values('Price')
+            .style.format({'Price': format_price}),
+            use_container_width=True
+        )
+    else:
+        st.warning("No options found within your budget")
+        st.info("Here are the 5 most affordable options:")
+        st.dataframe(
+            results_df[['Flat Type', 'Storey Range', 'Price']]
+            .nsmallest(5, 'Price')
+            .style.format({'Price': format_price}),
+            use_container_width=True
+        )
 
-        affordable = results_df[results_df['Within Budget']]
-        if not affordable.empty:
-            st.success(f"Found {len(affordable)} options within your budget")
-            st.dataframe(affordable[['Flat Type', 'Storey Range', 'Price']].sort_values('Price').style.format({'Price': format_price}), use_container_width=True)
-        else:
-            st.warning("No options found within your budget")
-            st.info("Here are the 5 most affordable options:")
-            st.dataframe(results_df[['Flat Type', 'Storey Range', 'Price']].nsmallest(5, 'Price').style.format({'Price': format_price}), use_container_width=True)
-
-        # --- DYNAMIC CHARTS ---
+    # --- 3️⃣ GRAPHS AT THE END ---
+    if show_charts:
         import matplotlib.pyplot as plt
         import seaborn as sns
 
-        if show_charts:
-            # Monthly trend for selected flat + storey
-            months = pd.date_range(start=f"{year}-01", periods=12, freq='M')
-            monthly_prices = []
-            for m in range(1, 13):
-                input_df = pd.DataFrame({
-                    'floor_area_sqm': [floor_area],
-                    'year': [year],
-                    'month_num': [m],
-                    'town': [st.session_state.selected_town],
-                    'flat_type': [selected_flat_type],
-                    'storey_range': [selected_storey_range]
-                })
-                input_df = pd.get_dummies(input_df, columns=['town', 'flat_type', 'storey_range'])
-                for col in EXPECTED_COLUMNS:
-                    input_df[col] = input_df.get(col, 0)
-                input_df = input_df[EXPECTED_COLUMNS]
+        # Monthly trend for selected flat + storey
+        months = pd.date_range(start=f"{year}-01", periods=12, freq='M')
+        monthly_prices = []
+        for m in range(1, 13):
+            input_df = pd.DataFrame({
+                'floor_area_sqm': [floor_area],
+                'year': [year],
+                'month_num': [m],
+                'town': [st.session_state.selected_town],
+                'flat_type': [selected_flat_type],
+                'storey_range': [selected_storey_range]
+            })
+            input_df = pd.get_dummies(input_df, columns=['town', 'flat_type', 'storey_range'])
+            for col in EXPECTED_COLUMNS:
+                input_df[col] = input_df.get(col, 0)
+            input_df = input_df[EXPECTED_COLUMNS]
 
-                try:
-                    pred_price = model.predict(input_df.values)[0]
-                    monthly_prices.append(pred_price)
-                except Exception:
-                    monthly_prices.append(None)
+            monthly_prices.append(model.predict(input_df.values)[0])
 
-            col1, col2 = st.columns(2)
+        col1, col2 = st.columns(2)
 
-            with col1:
-                fig1, ax1 = plt.subplots(figsize=(6, 4), dpi=150)
-                ax1.plot(months, monthly_prices, marker='o')
-                ax1.set_title(f"{selected_flat_type} Price Trend ({selected_storey_range}, {year})")
-                ax1.set_xlabel("Month")
-                ax1.set_ylabel("Predicted Price (SGD)")
-                ax1.grid(True)
-                st.pyplot(fig1)
+        with col1:
+            fig1, ax1 = plt.subplots(figsize=(6, 4), dpi=150)
+            ax1.plot(months, monthly_prices, marker='o')
+            ax1.set_title(f"{selected_flat_type} Price Trend ({selected_storey_range}, {year})")
+            ax1.set_xlabel("Month")
+            ax1.set_ylabel("Predicted Price (SGD)")
+            ax1.grid(True)
+            st.pyplot(fig1)
 
-            with col2:
-                fig2, ax2 = plt.subplots(figsize=(6, 4), dpi=130)
-                sns.histplot(
-                    data=results_df,
-                    x='Price',
-                    hue='Flat Type',
-                    multiple='stack',
-                    kde=True,
-                    palette='Set2',
-                    ax=ax2
-                )
-                ax2.set_title("Price Distribution by Flat Type")
-                ax2.set_xlabel("Price (SGD)")
-                ax2.set_ylabel("Count")
-                st.pyplot(fig2)
-    
+        with col2:
+            fig2, ax2 = plt.subplots(figsize=(6, 4), dpi=130)
+            sns.histplot(
+                data=results_df,
+                x='Price',
+                hue='Flat Type',
+                multiple='stack',
+                kde=True,
+                palette='Set2',
+                ax=ax2
+            )
+            ax2.set_title("Price Distribution by Flat Type")
+            ax2.set_xlabel("Price (SGD)")
+            ax2.set_ylabel("Count")
+            st.pyplot(fig2)
+
 with tab4:
     st.subheader("Compare Two Towns/Flats")
 
-    compare_placeholder = st.empty()
+    # --- Input Boxes Above ---
+    st.markdown("### Comparison Inputs")
+    input_col1, input_col2 = st.columns(2)
 
-    col1, col2 = st.columns(2)
-
-    with col1:
+    with input_col1:
         town1 = st.selectbox("Select Town 1", sorted(town_data['Town'].unique()), key='compare_town1')
         flat1 = st.selectbox("Flat Type 1", flat_types, key='compare_flat1')
         storey1 = st.selectbox("Storey Range 1", storey_ranges, key='compare_storey1')
 
-    with col2:
+    with input_col2:
         town2 = st.selectbox("Select Town 2", sorted(town_data['Town'].unique()), key='compare_town2')
         flat2 = st.selectbox("Flat Type 2", flat_types, key='compare_flat2')
         storey2 = st.selectbox("Storey Range 2", storey_ranges, key='compare_storey2')
@@ -556,11 +559,13 @@ with tab4:
     compare_area = st.number_input("Floor Area (sqm) for Comparison", 20.0, 300.0, 90.0, 1.0)
 
     if st.button("Compare Prices"):
-        def predict_price(town, flat, storey, area):
+        def predict_price(town, flat, storey, area, year=None, month=None):
+            year = year or datetime.now().year
+            month = month or datetime.now().month
             df = pd.DataFrame({
                 'floor_area_sqm': [area],
-                'year': [datetime.now().year],
-                'month_num': [datetime.now().month],
+                'year': [year],
+                'month_num': [month],
                 'town': [town],
                 'flat_type': [flat],
                 'storey_range': [storey]
@@ -570,21 +575,37 @@ with tab4:
                 df[col] = df.get(col, 0)
             df = df[EXPECTED_COLUMNS]
             return model.predict(df.values)[0]
-        
-        with compare_placeholder.container():
-            st.info("⏳ Comparing towns...")
-            
 
+        # --- Price Metrics ---
         price1 = predict_price(town1, flat1, storey1, compare_area)
         price2 = predict_price(town2, flat2, storey2, compare_area)
 
-        with compare_placeholder.container():
+        metric_col1, metric_col2 = st.columns(2)
+        metric_col1.metric("Estimated Price Town 1", format_price(price1))
+        metric_col2.metric("Estimated Price Town 2", format_price(price2))
 
-            col1.metric("Estimated Price Town 1", format_price(price1))
-            col2.metric("Estimated Price Town 2", format_price(price2))
+        diff = price1 - price2
+        st.write(f"💡 **Price Difference:** {format_price(abs(diff))} ({'Town 1 higher' if diff>0 else 'Town 2 higher'})")
 
-            diff = price1 - price2
-            st.write(f"💡 **Price Difference:** {format_price(abs(diff))} ({'Town 1 higher' if diff>0 else 'Town 2 higher'})")
+        # --- Smaller Price Trend Line Graph ---
+        import matplotlib.pyplot as plt
+
+        years = list(range(2017, datetime.now().year + 1))
+        trend1, trend2 = [], []
+
+        for y in years:
+            trend1.append(predict_price(town1, flat1, storey1, compare_area, year=y, month=6))
+            trend2.append(predict_price(town2, flat2, storey2, compare_area, year=y, month=6))
+
+        fig, ax = plt.subplots(figsize=(5, 3), dpi=100)  # smaller graph
+        ax.plot(years, trend1, marker='o', color='blue', label=f"{town1} ({flat1})")
+        ax.plot(years, trend2, marker='o', color='green', label=f"{town2} ({flat2})")
+        ax.set_title("Price Trend Comparison")
+        ax.set_xlabel("Year")
+        ax.set_ylabel("Predicted Price (SGD)")
+        ax.legend()
+        ax.grid(True)
+        st.pyplot(fig)
 
 
 # --- FOOTER ---
