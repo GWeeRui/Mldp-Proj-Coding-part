@@ -27,9 +27,6 @@ if 'year' not in full_df.columns:
         st.error("Your dataset needs a 'year' or date column to generate trends.")
         st.stop()
 
-
-
-
 # Set your Mapbox token (required for 3D maps)
 pdk.settings.mapbox_api_key = "YOUR_MAPBOX_PUBLIC_KEY"
 # --- PAGE CONFIGURATION ---
@@ -122,9 +119,6 @@ if 'view_state' not in st.session_state:
 
 if 'selected_town' not in st.session_state:
     st.session_state.selected_town = 'ANG MO KIO'
-
-
-
 
 def format_price(price):
     """Format price as SGD currency."""
@@ -224,6 +218,15 @@ with tab1:
             st.subheader("Prediction Results")
             if submitted and valid:
                 update_map_center(town)
+                
+                with st.expander("Why this price?"):
+                    st.write("""
+                        - Larger floor area increases price.
+                        - Town affects price due to location desirability.
+                        - Flat type influences value (e.g., EXECUTIVE usually more expensive).
+                        - Storey range can affect views and demand.
+                        - Market conditions at the resale date impact price.
+                    """)
 
                 with st.spinner("Calculating estimate..."):
                     # Prepare input data
@@ -306,24 +309,9 @@ with tab1:
                     st.pyplot(fig_hist)
 
 
-                with st.expander("Why this price?"):
-                    st.write("""
-                        - Larger floor area increases price.
-                        - Town affects price due to location desirability.
-                        - Flat type influences value (e.g., EXECUTIVE usually more expensive).
-                        - Storey range can affect views and demand.
-                        - Market conditions at the resale date impact price.
-                    """)
-
-
-
-# --- MAP TAB ---
-# --- MAP TAB ---
+                
 with tab2:
     st.subheader("HDB Towns in Singapore")
-    
-
-
     # Map controls
     with st.expander("Map Settings", expanded=True):
         col1, col2, col3 = st.columns(3)
@@ -347,8 +335,6 @@ with tab2:
      # Step 1: Show loading
     with map_placeholder.container():
         st.info("⏳ Loading map data...")
-        
-
     # Filter to selected flat types
     filtered = full_df[full_df['flat_type'].isin(filter_flat_types)]
 
@@ -411,13 +397,6 @@ with tab2:
             height=800
         )
 
-
-
-
-
-# --- INSIGHTS TAB ---
-# --- INSI
-# GHTS TAB ---
 with tab3:
 
 
@@ -606,13 +585,6 @@ with tab4:
 
             diff = price1 - price2
             st.write(f"💡 **Price Difference:** {format_price(abs(diff))} ({'Town 1 higher' if diff>0 else 'Town 2 higher'})")
-
-
-
-
-
-
-
 
 
 # --- FOOTER ---
