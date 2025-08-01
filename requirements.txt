@@ -5,3 +5,4 @@ pydeck
 seaborn
 numpy
 matplotlib
+scikit-learn
